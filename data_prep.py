@@ -95,6 +95,46 @@ def handle_metadata(df):
     
     return X_angle.values.reshape(-1, 1)
 
+def check_class_distribution(y_train, y_val, y_full):
+    """
+    Check and print class distribution in train, validation, and full dataset.
+    
+    Args:
+        y_train: Training labels
+        y_val: Validation labels
+        y_full: Full dataset labels
+    """
+    print("\n--- Class Distribution Check ---")
+    
+    # Full dataset
+    full_counts = np.bincount(y_full.astype(int))
+    full_total = len(y_full)
+    full_pct = (full_counts / full_total) * 100
+    
+    # Train dataset
+    train_counts = np.bincount(y_train.astype(int))
+    train_total = len(y_train)
+    train_pct = (train_counts / train_total) * 100
+    
+    # Validation dataset
+    val_counts = np.bincount(y_val.astype(int))
+    val_total = len(y_val)
+    val_pct = (val_counts / val_total) * 100
+    
+    print(f"Full Dataset: Class 0={full_counts[0]} ({full_pct[0]:.2f}%), Class 1={full_counts[1]} ({full_pct[1]:.2f}%)")
+    print(f"Train Set:    Class 0={train_counts[0]} ({train_pct[0]:.2f}%), Class 1={train_counts[1]} ({train_pct[1]:.2f}%)")
+    print(f"Val Set:      Class 0={val_counts[0]} ({val_pct[0]:.2f}%), Class 1={val_counts[1]} ({val_pct[1]:.2f}%)")
+    
+    # Check if distributions are similar (within 2% difference)
+    train_diff = abs(train_pct[0] - full_pct[0])
+    val_diff = abs(val_pct[0] - full_pct[0])
+    
+    if train_diff < 2.0 and val_diff < 2.0:
+        print("✓ All subsets maintain balanced class distribution")
+    else:
+        print(f"⚠ Warning: Class distribution differs by more than 2%")
+        print(f"  Train difference: {train_diff:.2f}%, Val difference: {val_diff:.2f}%")
+
 # --- Main Execution ---
 def get_processed_data():
     """Executes the full pipeline and returns PyTorch tensors, ready for training."""
@@ -114,6 +154,9 @@ def get_processed_data():
     # 4. Split Data
     X_img_train, X_img_val, X_angle_train, X_angle_val, y_train, y_val = \
         train_test_split(X_image, X_angle, y, test_size=TEST_SIZE, random_state=RANDOM_SEED, stratify=y)
+    
+    # Check class distribution in subsets
+    check_class_distribution(y_train, y_val, y)
 
     # 5. Convert to PyTorch Tensors
     X_img_train_t = torch.from_numpy(X_img_train).float()

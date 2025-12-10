@@ -2,6 +2,8 @@
 numpy==1.26.4
 pandas==2.2.2
 scikit-learn==1.4.2
+tqdm
+matplotlib
 
 # PyTorch (CPU-only version)
 # NOTE: The version (e.g., 2.2.2) can be adjusted, but sticking to 
