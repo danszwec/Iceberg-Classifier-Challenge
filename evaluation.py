@@ -7,10 +7,10 @@ import numpy as np
 
 # Import the custom model and data processing functions
 from sar_model import SARClassifier 
-from data_prep import get_processed_data 
+from data_prep import get_processed_data, get_test_data
 
 # --- Configuration ---
-MODEL_PATH = 'sar_classifier_model.pth'
+MODEL_PATH = 'sar_model.pth'
 BATCH_SIZE = 64
 
 def evaluate_and_submit():
@@ -66,7 +66,7 @@ def evaluate_and_submit():
     
     print("\n--- 2. Generating Predictions for Test Set ---")
     # Load the Test Set data (no labels)
-    X_img_test, X_angle_test, test_ids = get_processed_data()
+    X_img_test, X_angle_test, test_ids = get_test_data()
 
     test_dataset = TensorDataset(X_img_test, X_angle_test)
     test_loader = DataLoader(dataset=test_dataset, batch_size=BATCH_SIZE, shuffle=False)

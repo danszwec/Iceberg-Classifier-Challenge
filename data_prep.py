@@ -9,14 +9,22 @@ from tqdm import tqdm
 TEST_SIZE = 0.2
 RANDOM_SEED = 42
 
-def load_data(file_path):
-    """Loads the data from a JSON file into a Pandas DataFrame."""
+def load_data(file_path: str):
+    """
+    Loads the data from a JSON file into a Pandas DataFrame.
+    
+    Args:
+        file_path: Path to the JSON file
+        
+    Returns:
+        DataFrame containing the loaded data
+    """
     try:
         data = json.load(open(file_path))
         df = pd.DataFrame(data)
         return df
     except FileNotFoundError:
-        print(f"Error: File not found at {file_path}. Please ensure 'train.json' is in the current directory.")
+        print(f"Error: File not found at {file_path}.")
         exit()
 
 def N_x_normalization(band_data_db):
@@ -174,6 +182,43 @@ def get_processed_data():
     print(f"Image values are now non-linearly compressed (0 to 1 range).")
     
     return X_img_train_t, X_img_val_t, X_angle_train_t, X_angle_val_t, y_train_t, y_val_t
+
+def get_test_data():
+    """
+    Load and process test data for predictions.
+    
+    Returns:
+        Tuple of (X_img_test_t, X_angle_test_t, test_ids)
+    """
+    print("--- Processing Test Data ---")
+    
+    # Load test data
+    test_df = load_data('test.json')
+    test_ids = test_df['id'].tolist()
+    
+    # Preprocess images
+    X_image_test = preprocess_images_two_channel(test_df)
+    
+    # Handle metadata (use same scaling as training data)
+    # We need to load training data to get the min/max for scaling
+    train_df = load_data('train.json')
+    train_df['inc_angle'] = pd.to_numeric(train_df['inc_angle'], errors='coerce')
+    median_angle = train_df['inc_angle'].median()
+    min_val = train_df['inc_angle'].min()
+    max_val = train_df['inc_angle'].max()
+    
+    # Apply same preprocessing to test data
+    test_df['inc_angle'] = pd.to_numeric(test_df['inc_angle'], errors='coerce')
+    test_df['inc_angle'] = test_df['inc_angle'].fillna(median_angle)
+    X_angle_test = (test_df['inc_angle'] - min_val) / (max_val - min_val)
+    
+    # Convert to PyTorch tensors
+    X_img_test_t = torch.from_numpy(X_image_test).float()
+    X_angle_test_t = torch.from_numpy(X_angle_test.values).float().reshape(-1, 1)
+    
+    print(f"Test Image Tensor Shape: {X_img_test_t.shape}")
+    
+    return X_img_test_t, X_angle_test_t, test_ids
 
 if __name__ == "__main__":
     get_processed_data()

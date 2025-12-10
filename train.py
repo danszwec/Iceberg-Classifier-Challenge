@@ -2,8 +2,9 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
+import random
 from tqdm import tqdm
 # Import the custom model and data processing
 from sar_model import SARClassifier 
@@ -12,8 +13,42 @@ from data_prep import get_processed_data
 # --- Hyperparameters ---
 LEARNING_RATE = 0.001
 BATCH_SIZE = 64
-NUM_EPOCHS = 20
+NUM_EPOCHS = 40
 
+class AugmentedDataset(Dataset):
+    """
+    Dataset wrapper that applies data augmentations during training.
+    Supports horizontal/vertical flips and rotation.
+    """
+    def __init__(self, images, angles, labels, augment=True):
+        self.images = images
+        self.angles = angles
+        self.labels = labels
+        self.augment = augment
+    
+    def __len__(self):
+        return len(self.images)
+    
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        angle = self.angles[idx]
+        label = self.labels[idx]
+        
+        if self.augment:
+            # Random horizontal flip (50% chance)
+            if random.random() > 0.5:
+                image = torch.flip(image, dims=[2])  # Flip along width
+            
+            # Random vertical flip (50% chance)
+            if random.random() > 0.5:
+                image = torch.flip(image, dims=[1])  # Flip along height
+            
+            # Random rotation (0, 90, 180, or 270 degrees)
+            rotation = random.choice([0, 1, 2, 3])
+            if rotation > 0:
+                image = torch.rot90(image, k=rotation, dims=[1, 2])
+        
+        return image, angle, label
 
 def plot_loss_and_accuracy(loss_train_history, accuracy_train_history, loss_val_history, accuracy_val_history):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -45,9 +80,9 @@ def train_model():
     # 1. Load and Process Data (using your custom normalization)
     X_img_train, X_img_val, X_angle_train, X_angle_val, y_train, y_val = get_processed_data()
 
-    # Create PyTorch Datasets
-    train_dataset = TensorDataset(X_img_train, X_angle_train, y_train)
-    val_dataset = TensorDataset(X_img_val, X_angle_val, y_val)
+    # Create PyTorch Datasets with augmentation for training
+    train_dataset = AugmentedDataset(X_img_train, X_angle_train, y_train, augment=True)
+    val_dataset = AugmentedDataset(X_img_val, X_angle_val, y_val, augment=False)
 
     # Create PyTorch DataLoaders
     train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True)
