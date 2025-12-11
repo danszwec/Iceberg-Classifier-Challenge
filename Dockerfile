@@ -17,7 +17,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY *.py ./
 COPY *.yaml ./
-COPY Data/ ./Data/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
