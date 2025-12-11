@@ -249,7 +249,7 @@ def get_processed_data(data_path: str, validation_size: float = 0.1, random_seed
     
     return X_img_train_t, X_img_val_t, X_angle_train_t, X_angle_val_t, y_train_t, y_val_t
 
-def get_test_data(data_path: str) -> tuple[torch.Tensor, torch.Tensor, list, torch.Tensor]:
+def get_test_data(data_path: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Load and process test data for predictions.
     args:
@@ -271,12 +271,9 @@ def get_test_data(data_path: str) -> tuple[torch.Tensor, torch.Tensor, list, tor
     # Preprocess images
     X_image_test = preprocess_images_two_channel(test_df)
     
-    # Handle metadata
-    X_angle_test = handle_metadata(test_df)
-    
+
     # Convert to PyTorch tensors
     X_img_test_t = torch.from_numpy(X_image_test).float()
-    X_angle_test_t = torch.from_numpy(X_angle_test).float().reshape(-1, 1)
     
     # Handle labels if they exist
     if 'is_iceberg' in test_df.columns:
@@ -286,7 +283,7 @@ def get_test_data(data_path: str) -> tuple[torch.Tensor, torch.Tensor, list, tor
     
     print(f"Test Image Tensor Shape: {X_img_test_t.shape}")
     
-    return X_img_test_t, X_angle_test_t, test_ids, y_test
+    return X_img_test_t, test_ids, y_test
 
 class AugmentedDataset(Dataset):
     """

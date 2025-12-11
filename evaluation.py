@@ -43,17 +43,16 @@ def save_confusion_matrix(confusion_matrix: np.ndarray, save_path: str) -> None:
     plt.close()
     return None
 
-def evaluate(model_path: str, batch_size: int, X_img_test: torch.Tensor, X_angle_test: torch.Tensor, y_test: torch.Tensor) -> tuple[np.ndarray, float, float]:
+def evaluate(model_path: str, batch_size: int, X_img_test: torch.Tensor, y_test: torch.Tensor) -> tuple[np.ndarray, float, float]:
     """
-    Evaluate the model on the validation set and submit the predictions to the test set.
+    Evaluate the model on the validation set.
     args:
         model_path: Path to the model weights
         batch_size: Batch size for the validation set
         X_img_test: Test images
-        X_angle_test: Test angles
         y_test: Test labels
     returns:
-        tuple[np.ndarray, float, float]
+        tuple[np.ndarray, float, float]: (confusion_matrix, f1_micro, log_loss_test)
     """
     #1. Load the model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -121,7 +120,7 @@ def submit_predictions(model_path: str, batch_size: int) -> None:
     model.eval()
 
     #2. Load the Test Set data (no labels)
-    X_img_test, test_ids, _ = get_test_data(data_path='Data/test.json')
+    X_img_test, test_ids, y_test = get_test_data(data_path='Data/test.json')
 
     test_dataset = TensorDataset(X_img_test)
     test_loader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False)
@@ -132,7 +131,7 @@ def submit_predictions(model_path: str, batch_size: int) -> None:
 
     with torch.no_grad():
         for images in test_loader:
-            images = images.to(device)
+            images = images[0].to(device)  # TensorDataset returns tuple, get first element
             outputs = model(images)
             test_predictions.extend(outputs.cpu().numpy().flatten())
 
@@ -158,11 +157,11 @@ if __name__ == '__main__':
     log_loss_test_list = []
 
     #1. Load the test data
-    X_img_test, X_angle_test, _, y_test = get_test_data(data_path='Data/new_train.json')
+    X_img_test, test_ids, y_test = get_test_data(data_path='Data/new_train.json')
 
     #2. Evaluate the model on the test set
     for fold_idx in tqdm(range(N_SPLITS)):
-        confusion_matrix, f1_micro, log_loss_test = evaluate(model_path=f'k_fold_cross_validation/models/sar_model_fold_{fold_idx+1}/last.pth', batch_size=64, X_img_test=X_img_test, X_angle_test=X_angle_test, y_test=y_test)
+        confusion_matrix, f1_micro, log_loss_test = evaluate(model_path=f'k_fold_cross_validation/models/sar_model_fold_{fold_idx+1}/last.pth', batch_size=64, X_img_test=X_img_test, y_test=y_test)
         f1_micro_list.append(f1_micro)
         log_loss_test_list.append(log_loss_test)
         save_confusion_matrix(confusion_matrix, f'k_fold_cross_validation/plots/confusion_matrix_fold_{fold_idx+1}.png')
@@ -172,7 +171,7 @@ if __name__ == '__main__':
     best_model_path = f'k_fold_cross_validation/models/sar_model_fold_{best_fold_idx+1}/best_val_acc.pth'
 
     #4. Submit the predictions
-    print(f"Best model path: {best_model_path} with log loss: {log_loss_test_list[best_fold_idx]:.4f}")
+    print(f"Best model path: {best_model_path} with log loss: {log_loss_test_list[best_fold_idx]:.4f} and f1 micro: {f1_micro_list[best_fold_idx]:.4f}")
     submit_predictions(model_path=best_model_path, batch_size=64)
 
 

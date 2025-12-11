@@ -181,81 +181,6 @@ def check_missing_values(df: pd.DataFrame) -> None:
 
 
 
-def plot_angle_iceberg_histogram(df: pd.DataFrame, min_angle: float, max_angle: float) -> None:
-    """
-    Filter angles between 36-40, round to 4 decimals, and plot histogram
-    showing angle distribution colored by is_iceberg.
-    
-    args:
-        df: pd.DataFrame with 'inc_angle' and 'is_iceberg' columns
-        min_angle: float: minimum angle to plot
-        max_angle: float: maximum angle to plot
-    returns:
-        None
-    """
-    print("\n--- Angle-Iceberg Histogram Analysis (36-40 degrees) ---")
-    
-    # Convert angles to numeric and filter
-    df_clean = df.copy()
-    df_clean['inc_angle'] = pd.to_numeric(df_clean['inc_angle'], errors='coerce')
-    
-    # Filter angles between 36-40
-    filtered_df = df_clean[(df_clean['inc_angle'] >= min_angle) & (df_clean['inc_angle'] <= max_angle)].copy()
-    
-    if len(filtered_df) == 0:
-        print("No data found with angles between 36-40 degrees")
-        return
-    
-    # Round to 4 decimal places
-    filtered_df['inc_angle_rounded'] = filtered_df['inc_angle'].round(4)
-    
-    print(f"Found {len(filtered_df)} samples with angles between 36-40 degrees")
-    print(f"  Ships (0): {len(filtered_df[filtered_df['is_iceberg'] == 0])}")
-    print(f"  Icebergs (1): {len(filtered_df[filtered_df['is_iceberg'] == 1])}")
-    
-    # Create histogram plot
-    fig, ax = plt.subplots(figsize=(14, 6))
-    
-    # Separate data by class
-    ship_angles = filtered_df[filtered_df['is_iceberg'] == 0]['inc_angle_rounded']
-    iceberg_angles = filtered_df[filtered_df['is_iceberg'] == 1]['inc_angle_rounded']
-    
-    # Get unique angle values (rounded to 4 decimals) for binning
-    unique_angles = sorted(filtered_df['inc_angle_rounded'].unique())
-    num_bins = min(len(unique_angles), 100)  # Limit to reasonable number of bins
-    
-    # Create histogram with appropriate binning
-    ax.hist(ship_angles, bins=num_bins, alpha=0.6, label='Ship (0)', color='blue', density=False)
-    ax.hist(iceberg_angles, bins=num_bins, alpha=0.6, label='Iceberg (1)', color='orange', density=False)
-    
-    ax.set_xlabel('Incidence Angle (rounded to 4 decimals)', fontsize=12)
-    ax.set_ylabel('Count (is_iceberg)', fontsize=12)
-    ax.set_title('Histogram of Angles (36-40°) by Class', fontsize=14)
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    # Set more x-axis ticks to show more values
-    min_angle = filtered_df['inc_angle_rounded'].min()
-    max_angle = filtered_df['inc_angle_rounded'].max()
-    
-    # Create ticks every 0.1 degrees or use unique values if fewer
-    if len(unique_angles) <= 50:
-        # Show all unique angles if there aren't too many
-        ax.set_xticks(unique_angles)
-        ax.set_xticklabels([f'{angle:.4f}' for angle in unique_angles], rotation=45, ha='right', fontsize=8)
-    else:
-        # Show ticks at regular intervals
-        num_ticks = min(50, len(unique_angles))
-        tick_positions = np.linspace(min_angle, max_angle, num_ticks)
-        ax.set_xticks(tick_positions)
-        ax.set_xticklabels([f'{angle:.4f}' for angle in tick_positions], rotation=45, ha='right', fontsize=8)
-    
-    plt.tight_layout()
-    plt.savefig('eda_plots/angle_iceberg_histogram.png', dpi=150)
-    print("Visualization saved as 'eda_plots/angle_iceberg_histogram.png'")
-    plt.close()
-    return None
-
 def visualize_eda(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
     """Create visualizations for EDA.
     args:
@@ -408,7 +333,6 @@ def sample_images(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
 
 
     #2. Plot the test set samples (Two arbitrary samples)
-    
     if not test_df.empty:
         # We assume the test set does NOT have the 'is_iceberg' label (standard competition format)
         test_idx_1 = test_df.index[0]
@@ -430,6 +354,81 @@ def sample_images(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
     plt.tight_layout()
     plt.savefig('eda_plots/sample_images.png', dpi=150)
     print("\n✓ Sample images saved as 'eda_plots/sample_images.png' showing Train and Test examples.")
+    plt.close()
+    return None
+
+def plot_angle_iceberg_histogram(df: pd.DataFrame, min_angle: float, max_angle: float) -> None:
+    """
+    Filter angles between 36-40, round to 4 decimals, and plot histogram
+    showing angle distribution colored by is_iceberg.
+    
+    args:
+        df: pd.DataFrame with 'inc_angle' and 'is_iceberg' columns
+        min_angle: float: minimum angle to plot
+        max_angle: float: maximum angle to plot
+    returns:
+        None
+    """
+    print("\n--- Angle-Iceberg Histogram Analysis (36-40 degrees) ---")
+    
+    # Convert angles to numeric and filter
+    df_clean = df.copy()
+    df_clean['inc_angle'] = pd.to_numeric(df_clean['inc_angle'], errors='coerce')
+    
+    # Filter angles between 36-40
+    filtered_df = df_clean[(df_clean['inc_angle'] >= min_angle) & (df_clean['inc_angle'] <= max_angle)].copy()
+    
+    if len(filtered_df) == 0:
+        print("No data found with angles between 36-40 degrees")
+        return
+    
+    # Round to 4 decimal places
+    filtered_df['inc_angle_rounded'] = filtered_df['inc_angle'].round(4)
+    
+    print(f"Found {len(filtered_df)} samples with angles between 36-40 degrees")
+    print(f"  Ships (0): {len(filtered_df[filtered_df['is_iceberg'] == 0])}")
+    print(f"  Icebergs (1): {len(filtered_df[filtered_df['is_iceberg'] == 1])}")
+    
+    # Create histogram plot
+    fig, ax = plt.subplots(figsize=(14, 6))
+    
+    # Separate data by class
+    ship_angles = filtered_df[filtered_df['is_iceberg'] == 0]['inc_angle_rounded']
+    iceberg_angles = filtered_df[filtered_df['is_iceberg'] == 1]['inc_angle_rounded']
+    
+    # Get unique angle values (rounded to 4 decimals) for binning
+    unique_angles = sorted(filtered_df['inc_angle_rounded'].unique())
+    num_bins = min(len(unique_angles), 100)  # Limit to reasonable number of bins
+    
+    # Create histogram with appropriate binning
+    ax.hist(ship_angles, bins=num_bins, alpha=0.6, label='Ship (0)', color='blue', density=False)
+    ax.hist(iceberg_angles, bins=num_bins, alpha=0.6, label='Iceberg (1)', color='orange', density=False)
+    
+    ax.set_xlabel('Incidence Angle (rounded to 4 decimals)', fontsize=12)
+    ax.set_ylabel('Count (is_iceberg)', fontsize=12)
+    ax.set_title('Histogram of Angles (36-40°) by Class', fontsize=14)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Set more x-axis ticks to show more values
+    min_angle = filtered_df['inc_angle_rounded'].min()
+    max_angle = filtered_df['inc_angle_rounded'].max()
+    
+    # Create ticks every 0.1 degrees or use unique values if fewer
+    if len(unique_angles) <= 50:
+        # Show all unique angles if there aren't too many
+        ax.set_xticks(unique_angles)
+        ax.set_xticklabels([f'{angle:.4f}' for angle in unique_angles], rotation=45, ha='right', fontsize=8)
+    else:
+        # Show ticks at regular intervals
+        num_ticks = min(50, len(unique_angles))
+        tick_positions = np.linspace(min_angle, max_angle, num_ticks)
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels([f'{angle:.4f}' for angle in tick_positions], rotation=45, ha='right', fontsize=8)
+    
+    plt.tight_layout()
+    plt.savefig('eda_plots/angle_iceberg_histogram.png', dpi=150)
+    print("Visualization saved as 'eda_plots/angle_iceberg_histogram.png'")
     plt.close()
     return None
 
