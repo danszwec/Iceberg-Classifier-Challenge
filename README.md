@@ -31,7 +31,7 @@ docker run -it --rm \
     -v $(pwd)/Data:/app/Data \
     sar-classifier
 ```
-/* 
+
 Mounts:
 - $(pwd):/app      # Mounts the project repo into the container
 - $(pwd)/Data:/app/Data   # Ensures the Data directory is available inside the container
