@@ -2,8 +2,10 @@ import pandas as pd
 import numpy as np
 import json
 import torch
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from tqdm import tqdm
+from torch.utils.data import Dataset
+import random
 
 # --- Configuration ---
 TEST_SIZE = 0.2
@@ -219,6 +221,90 @@ def get_test_data():
     print(f"Test Image Tensor Shape: {X_img_test_t.shape}")
     
     return X_img_test_t, X_angle_test_t, test_ids
+
+class AugmentedDataset(Dataset):
+    """
+    Dataset wrapper that applies data augmentations during training.
+    Supports horizontal/vertical flips and rotation.
+    """
+    def __init__(self, images, angles, labels, augment=True):
+        self.images = images
+        self.angles = angles
+        self.labels = labels
+        self.augment = augment
+    
+    def __len__(self):
+        return len(self.images)
+    
+    def __getitem__(self, idx):
+        image = self.images[idx]
+        angle = self.angles[idx]
+        label = self.labels[idx]
+        
+        if self.augment:
+            # Random horizontal flip (50% chance)
+            if random.random() > 0.5:
+                image = torch.flip(image, dims=[2])  # Flip along width
+            
+            # Random vertical flip (50% chance)
+            if random.random() > 0.5:
+                image = torch.flip(image, dims=[1])  # Flip along height
+            
+            # Random rotation (0, 90, 180, or 270 degrees)
+            rotation = random.choice([0, 1, 2, 3])
+            if rotation > 0:
+                image = torch.rot90(image, k=rotation, dims=[1, 2])
+        
+        return image, angle, label
+
+
+def get_k_fold_data(n_splits=5):
+    """
+    Load and process data for k-fold cross-validation.
+    
+    Args:
+        n_splits: Number of folds (default: 5)
+        
+    Returns:
+        Generator yielding tuples of (X_img_train, X_img_val, X_angle_train, 
+        X_angle_val, y_train, y_val) for each fold
+    """
+    print("--- Preparing K-Fold Cross-Validation Data ---")
+    
+    train_df = load_data('Data/train.json')
+    y = train_df['is_iceberg'].values
+    
+    # Preprocess all images and angles once
+    X_image = preprocess_images_two_channel(train_df)
+    X_angle = handle_metadata(train_df)
+    
+    # Use StratifiedKFold to maintain class balance
+    k_folds = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_SEED)
+    
+    for fold_idx, (train_index, val_index) in enumerate(k_folds.split(X_image, y)):
+        print(f"\n--- Fold {fold_idx + 1}/{n_splits} ---")
+        
+        # Split data
+        X_img_train = X_image[train_index]
+        X_img_val = X_image[val_index]
+        X_angle_train = X_angle[train_index]
+        X_angle_val = X_angle[val_index]
+        y_train = y[train_index]
+        y_val = y[val_index]
+        
+        # Check class distribution
+        check_class_distribution(y_train, y_val, y)
+        
+        # Convert to PyTorch tensors
+        X_img_train_t = torch.from_numpy(X_img_train).float()
+        X_img_val_t = torch.from_numpy(X_img_val).float()
+        X_angle_train_t = torch.from_numpy(X_angle_train).float()
+        X_angle_val_t = torch.from_numpy(X_angle_val).float()
+        y_train_t = torch.from_numpy(y_train).float().view(-1, 1)
+        y_val_t = torch.from_numpy(y_val).float().view(-1, 1)
+        
+        yield X_img_train_t, X_img_val_t, X_angle_train_t, X_angle_val_t, y_train_t, y_val_t
+
 
 if __name__ == "__main__":
     get_processed_data()
