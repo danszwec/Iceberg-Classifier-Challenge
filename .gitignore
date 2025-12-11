@@ -2,4 +2,6 @@
 *.csv
 *.png
 *.pth
+/Data
+/k_fold_cross_validation
 __pycache__

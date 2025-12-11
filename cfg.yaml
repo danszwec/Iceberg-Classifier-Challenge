@@ -1,0 +1,13 @@
+# --- Data Configuration ---
+validation_size: 0.1
+random_seed: 42
+test_size: 0.07
+data_path: 'Data/train.json'
+
+# --- Training Configuration ---
+learning_rate: 0.00005
+batch_size: 64
+num_epochs: 50
+training_mode: 'kfold'
+n_splits: 10
+

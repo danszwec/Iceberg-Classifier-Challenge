@@ -5,13 +5,11 @@ import torch
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from tqdm import tqdm
 from torch.utils.data import Dataset
+from typing import Generator
 import random
+import yaml
 
-# --- Configuration ---
-TEST_SIZE = 0.2
-RANDOM_SEED = 42
-
-def load_data(file_path: str):
+def load_data(file_path: str) -> pd.DataFrame:
     """
     Loads the data from a JSON file into a Pandas DataFrame.
     
@@ -29,12 +27,18 @@ def load_data(file_path: str):
         print(f"Error: File not found at {file_path}.")
         exit()
 
-def N_x_normalization(band_data_db):
+def N_x_normalization(band_data_db: np.ndarray) -> np.ndarray:
     """
-    Applies the user-defined custom normalization N(x).
+
+    Applies the user-defined paper was given normalization N(x).
     
     This function first converts the dB input to Linear Power Intensity (x) 
     to correctly apply the threshold x >= 1.
+
+    args:
+        band_data_db: np.ndarray
+    returns:
+        np.ndarray
     """
     
     # 1. CRITICAL CONVERSION: dB to Linear Power Intensity (x = 10^(dB / 10))
@@ -62,11 +66,16 @@ def N_x_normalization(band_data_db):
     return N_x
 
 
-def preprocess_images_two_channel(df):
+def preprocess_images_two_channel(df: pd.DataFrame) -> np.ndarray:
     """
     Reshapes bands, applies custom normalization, and returns 
     a 2-channel tensor (N, C, H, W).
+    args:
+        df: pd.DataFrame
+    returns:
+        np.ndarray
     """
+
     images = []
 
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing images"):
@@ -91,8 +100,14 @@ def preprocess_images_two_channel(df):
     return X
 
 
-def handle_metadata(df):
-    """Handles the 'inc_angle' metadata feature and prepares it for the model (Min-Max scaling)."""
+def handle_metadata(df: pd.DataFrame) -> np.ndarray:
+    """
+    Handles the 'inc_angle' metadata feature and prepares it for the model (Min-Max scaling).
+    args:
+        df: pd.DataFrame
+    returns:
+        np.ndarray
+    """
     
     # Impute and Min-Max scale incidence angle
     df['inc_angle'] = pd.to_numeric(df['inc_angle'], errors='coerce')
@@ -105,14 +120,15 @@ def handle_metadata(df):
     
     return X_angle.values.reshape(-1, 1)
 
-def check_class_distribution(y_train, y_val, y_full):
+def check_class_distribution(y_train: np.ndarray, y_val: np.ndarray, y_full: np.ndarray, subset_name: str = 'validation') -> None:
     """
     Check and print class distribution in train, validation, and full dataset.
     
     Args:
-        y_train: Training labels
-        y_val: Validation labels
-        y_full: Full dataset labels
+        y_train: np.ndarray of training labels
+        y_val: np.ndarray of validation labels
+        y_full: np.ndarray of full dataset labels
+        subset_name: Name of the subset to check (default: 'validation')
     """
     print("\n--- Class Distribution Check ---")
     
@@ -133,26 +149,72 @@ def check_class_distribution(y_train, y_val, y_full):
     
     print(f"Full Dataset: Class 0={full_counts[0]} ({full_pct[0]:.2f}%), Class 1={full_counts[1]} ({full_pct[1]:.2f}%)")
     print(f"Train Set:    Class 0={train_counts[0]} ({train_pct[0]:.2f}%), Class 1={train_counts[1]} ({train_pct[1]:.2f}%)")
-    print(f"Val Set:      Class 0={val_counts[0]} ({val_pct[0]:.2f}%), Class 1={val_counts[1]} ({val_pct[1]:.2f}%)")
+    print(f"{subset_name} Set:      Class 0={val_counts[0]} ({val_pct[0]:.2f}%), Class 1={val_counts[1]} ({val_pct[1]:.2f}%)")
     
     # Check if distributions are similar (within 2% difference)
     train_diff = abs(train_pct[0] - full_pct[0])
     val_diff = abs(val_pct[0] - full_pct[0])
     
     if train_diff < 2.0 and val_diff < 2.0:
-        print("✓ All subsets maintain balanced class distribution")
+        print("All subsets maintain balanced class distribution")
     else:
-        print(f"⚠ Warning: Class distribution differs by more than 2%")
-        print(f"  Train difference: {train_diff:.2f}%, Val difference: {val_diff:.2f}%")
+        print(f"Warning: Class distribution differs by more than 2%")
+        print(f"  Train difference: {train_diff:.2f}%, {subset_name} difference: {val_diff:.2f}%")
+
+def separate_test_data(data_path: str, test_size: float, random_seed: int) -> None:
+    """
+    Separates test data from the training data.
+    args:
+        data_path: str
+        test_size: float
+        random_seed: int
+    returns:
+        None
+    """
+
+    train_df = load_data(data_path)
+    y = train_df['is_iceberg'].values
+
+    X_image = preprocess_images_two_channel(train_df)
+    X_angle = handle_metadata(train_df)
+    _, _, _, _, y_train, y_test = \
+        train_test_split(X_image, X_angle, y, test_size=test_size, random_state=random_seed, stratify=y)
+
+    # Check class distribution in subsets
+    check_class_distribution(y_train, y_test, y, subset_name='test')
+
+    # retrieve the test indices by comparing y_train to y (the original order)
+    # test indices are those NOT in y_train after the split
+    train_indices = set(np.where(np.in1d(y, y_train))[0])
+    all_indices = set(range(len(y)))
+    test_indices = list(all_indices - train_indices)
+
+    # Drop the test data from train_df and y using test_indices
+    train_df = train_df.drop(train_df.index[test_indices])
+    test_df = train_df.iloc[test_indices]
+    
+    #write the test data and the train data to a json file
+    train_df.to_json('Data/new_train.json', orient='records')
+    test_df.to_json('Data/new_test.json', orient='records')
+
+
+    return None
 
 # --- Main Execution ---
-def get_processed_data():
-    """Executes the full pipeline and returns PyTorch tensors, ready for training."""
+def get_processed_data(data_path: str, validation_size: float = 0.1, random_seed: int = 42) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Executes the full pipeline and returns PyTorch tensors, ready for training.
+    args:
+        data_path: str
+        validation_size: float
+        random_seed: int
+    returns:
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+    """
     
     print("--- Starting Custom Two-Channel Data Processing ---")
     
     # 1. Load Data
-    train_df = load_data('train.json')
+    train_df = load_data(data_path)
     y = train_df['is_iceberg'].values
 
     # 2. Preprocess Image Data using custom normalization
@@ -161,17 +223,19 @@ def get_processed_data():
     # 3. Handle Metadata
     X_angle = handle_metadata(train_df)
 
-    # 4. Split Data
-    X_img_train, X_img_val, X_angle_train, X_angle_val, y_train, y_val = \
-        train_test_split(X_image, X_angle, y, test_size=TEST_SIZE, random_state=RANDOM_SEED, stratify=y)
     
-    # Check class distribution in subsets
+    # 4 split to train and validation
+    X_img_train, X_img_val, X_angle_train, X_angle_val, y_train, y_val = \
+        train_test_split(X_image, X_angle, y, test_size=validation_size, random_state=random_seed, stratify=y)
+    
+    # 5.Check class distribution in subsets
     check_class_distribution(y_train, y_val, y)
 
-    # 5. Convert to PyTorch Tensors
+    # 6. Convert to PyTorch Tensors
     X_img_train_t = torch.from_numpy(X_img_train).float()
     X_img_val_t = torch.from_numpy(X_img_val).float()
     
+
     X_angle_train_t = torch.from_numpy(X_angle_train).float()
     X_angle_val_t = torch.from_numpy(X_angle_val).float()
     
@@ -185,60 +249,67 @@ def get_processed_data():
     
     return X_img_train_t, X_img_val_t, X_angle_train_t, X_angle_val_t, y_train_t, y_val_t
 
-def get_test_data():
+def get_test_data(data_path: str) -> tuple[torch.Tensor, torch.Tensor, list, torch.Tensor]:
     """
     Load and process test data for predictions.
-    
-    Returns:
-        Tuple of (X_img_test_t, X_angle_test_t, test_ids)
+    args:
+        data_path: str
+    returns:
+        tuple[torch.Tensor, torch.Tensor, list, torch.Tensor]
     """
     print("--- Processing Test Data ---")
     
     # Load test data
-    test_df = load_data('test.json')
-    test_ids = test_df['id'].tolist()
+    test_df = load_data(data_path)
     
+    # Handle 'id' column - use it if exists, otherwise use index
+    if 'id' in test_df.columns:
+        test_ids = test_df['id'].tolist()
+    else:
+        test_ids = test_df.index.tolist()
+
     # Preprocess images
     X_image_test = preprocess_images_two_channel(test_df)
     
-    # Handle metadata (use same scaling as training data)
-    # We need to load training data to get the min/max for scaling
-    train_df = load_data('train.json')
-    train_df['inc_angle'] = pd.to_numeric(train_df['inc_angle'], errors='coerce')
-    median_angle = train_df['inc_angle'].median()
-    min_val = train_df['inc_angle'].min()
-    max_val = train_df['inc_angle'].max()
-    
-    # Apply same preprocessing to test data
-    test_df['inc_angle'] = pd.to_numeric(test_df['inc_angle'], errors='coerce')
-    test_df['inc_angle'] = test_df['inc_angle'].fillna(median_angle)
-    X_angle_test = (test_df['inc_angle'] - min_val) / (max_val - min_val)
+    # Handle metadata
+    X_angle_test = handle_metadata(test_df)
     
     # Convert to PyTorch tensors
     X_img_test_t = torch.from_numpy(X_image_test).float()
-    X_angle_test_t = torch.from_numpy(X_angle_test.values).float().reshape(-1, 1)
+    X_angle_test_t = torch.from_numpy(X_angle_test).float().reshape(-1, 1)
+    
+    # Handle labels if they exist
+    if 'is_iceberg' in test_df.columns:
+        y_test = torch.from_numpy(test_df['is_iceberg'].values).float().view(-1, 1)
+    else:
+        y_test = None
     
     print(f"Test Image Tensor Shape: {X_img_test_t.shape}")
     
-    return X_img_test_t, X_angle_test_t, test_ids
+    return X_img_test_t, X_angle_test_t, test_ids, y_test
 
 class AugmentedDataset(Dataset):
     """
     Dataset wrapper that applies data augmentations during training.
     Supports horizontal/vertical flips and rotation.
+    args:
+        images: torch.Tensor
+        labels: torch.Tensor
+        augment: bool
+    returns:
+        image: torch.Tensor
+        label: torch.Tensor
     """
-    def __init__(self, images, angles, labels, augment=True):
+    def __init__(self, images: torch.Tensor, labels: torch.Tensor, augment: bool = True):
         self.images = images
-        self.angles = angles
         self.labels = labels
         self.augment = augment
     
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.images)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         image = self.images[idx]
-        angle = self.angles[idx]
         label = self.labels[idx]
         
         if self.augment:
@@ -255,31 +326,29 @@ class AugmentedDataset(Dataset):
             if rotation > 0:
                 image = torch.rot90(image, k=rotation, dims=[1, 2])
         
-        return image, angle, label
+        return image, label
 
 
-def get_k_fold_data(n_splits=5):
+def get_k_fold_data(data_path: str, n_splits: int, random_seed: int) -> Generator[tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], None, None]:
     """
     Load and process data for k-fold cross-validation.
-    
-    Args:
-        n_splits: Number of folds (default: 5)
-        
-    Returns:
-        Generator yielding tuples of (X_img_train, X_img_val, X_angle_train, 
-        X_angle_val, y_train, y_val) for each fold
+    args:
+        data_path: str
+        n_splits: int
+        random_seed: int
+    returns:
+        Generator yielding tuples of (X_img_train, X_img_val, X_angle_train, X_angle_val, y_train, y_val) for each fold
     """
     print("--- Preparing K-Fold Cross-Validation Data ---")
     
-    train_df = load_data('Data/train.json')
+    train_df = load_data(data_path)
     y = train_df['is_iceberg'].values
     
     # Preprocess all images and angles once
     X_image = preprocess_images_two_channel(train_df)
-    X_angle = handle_metadata(train_df)
     
     # Use StratifiedKFold to maintain class balance
-    k_folds = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_SEED)
+    k_folds = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_seed)
     
     for fold_idx, (train_index, val_index) in enumerate(k_folds.split(X_image, y)):
         print(f"\n--- Fold {fold_idx + 1}/{n_splits} ---")
@@ -287,8 +356,6 @@ def get_k_fold_data(n_splits=5):
         # Split data
         X_img_train = X_image[train_index]
         X_img_val = X_image[val_index]
-        X_angle_train = X_angle[train_index]
-        X_angle_val = X_angle[val_index]
         y_train = y[train_index]
         y_val = y[val_index]
         
@@ -298,13 +365,28 @@ def get_k_fold_data(n_splits=5):
         # Convert to PyTorch tensors
         X_img_train_t = torch.from_numpy(X_img_train).float()
         X_img_val_t = torch.from_numpy(X_img_val).float()
-        X_angle_train_t = torch.from_numpy(X_angle_train).float()
-        X_angle_val_t = torch.from_numpy(X_angle_val).float()
         y_train_t = torch.from_numpy(y_train).float().view(-1, 1)
         y_val_t = torch.from_numpy(y_val).float().view(-1, 1)
         
-        yield X_img_train_t, X_img_val_t, X_angle_train_t, X_angle_val_t, y_train_t, y_val_t
+        yield X_img_train_t, X_img_val_t, y_train_t, y_val_t
 
 
 if __name__ == "__main__":
-    get_processed_data()
+
+    #load the configuration file
+    with open('cfg.yaml', 'r') as f:
+        cfg = yaml.load(f, Loader=yaml.FullLoader)
+
+    #get the configuration values
+    VALIDATION_SIZE = cfg['validation_size']
+    TEST_SIZE = cfg['test_size']
+    RANDOM_SEED = cfg['random_seed']
+    DATA_PATH = cfg['data_path']    
+
+    #separate the test data if the test size is greater than 0
+    if TEST_SIZE > 0:
+        separate_test_data(data_path=DATA_PATH, test_size=TEST_SIZE, random_seed=RANDOM_SEED)
+        data_path = 'Data/new_train.json'
+    else:
+        data_path = DATA_PATH
+    get_processed_data(data_path=data_path, validation_size=VALIDATION_SIZE, random_seed=RANDOM_SEED)

@@ -16,12 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
 COPY *.py ./
-COPY *.json ./
-COPY *.csv ./
+COPY *.yaml ./
+COPY Data/ ./Data/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Default command (can be overridden)
-CMD ["python", "train.py"]
+CMD ["/bin/bash"]
+
 

@@ -3,20 +3,19 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 from typing import Tuple, List
+import os
 
-def load_data(file_path: str) -> pd.DataFrame:
-    """Loads the data from a JSON file into a Pandas DataFrame."""
-    try:
-        data = json.load(open(file_path))
-        df = pd.DataFrame(data)
-        return df
-    except FileNotFoundError:
-        print(f"Error: File not found at {file_path}.")
-        exit()
+from data_prep import load_data
 
-
-# Check integrity of all arrays simultaneously using a generator
-def check_array(arr_list):
+# Check integrity of all  simultaneously using a generator
+def check_array(arr_list: list) -> bool:
+    """
+    Checks the integrity of an array.
+    args:
+        arr_list: list
+    returns:
+        bool
+    """
     try:
         arr = np.array(arr_list, dtype=np.float32)
         return arr.size == 5625 and not np.isnan(arr).any() and not np.isinf(arr).any()
@@ -27,14 +26,14 @@ def check_array(arr_list):
 def check_data_validity(train_df: pd.DataFrame,test_df: pd.DataFrame) -> bool:
     """
     Checks core data validity (bands and target) in the shortest form possible.
-    Returns True if valid, False otherwise.
     args:
-        df: pd.DataFrame
+        train_df: pd.DataFrame of training data
+        test_df: pd.DataFrame of test data
     returns:
-        bool
+        bool: True if valid, False otherwise
     """
     # List to collect all issues
-    issues: List[str] = []
+    issues = []
     
     # 1. Check Target Column (is_iceberg)
     if 'is_iceberg' in train_df.columns:
@@ -99,15 +98,14 @@ def check_data_validity(train_df: pd.DataFrame,test_df: pd.DataFrame) -> bool:
         print("VALIDITY CHECK PASSED.")
         return True
 
-def check_class_balance(df: pd.DataFrame) -> Tuple[dict, bool]:
+def check_class_balance(df: pd.DataFrame) -> None:
     """
     Check if the target class is balanced.
     
-    Args:
-        df: DataFrame with 'is_iceberg' column
-        
-    Returns:
-        Tuple containing (class_counts dict, is_balanced bool)
+    args:
+        df: pd.DataFrame with 'is_iceberg' column
+    returns:
+        None
     """
     class_counts = df['is_iceberg'].value_counts().to_dict()
     total = len(df)
@@ -127,17 +125,16 @@ def check_class_balance(df: pd.DataFrame) -> Tuple[dict, bool]:
     else:
         print("Data is imbalanced - consider using class weights or resampling")
     
-    return class_counts, is_balanced
+    return None
 
-def check_angle_correlation(df: pd.DataFrame) -> float:
+def check_angle_target_correlation(df: pd.DataFrame) -> None:
     """
     Check correlation between incidence angle and target.
     
-    Args:
-        df: DataFrame with 'inc_angle' and 'is_iceberg' columns
-        
-    Returns:
-        Correlation coefficient
+    args:
+        df: pd.DataFrame with 'inc_angle' and 'is_iceberg' columns
+    returns:
+        None
     """
     # Handle missing values
     df_clean = df.copy()
@@ -159,17 +156,16 @@ def check_angle_correlation(df: pd.DataFrame) -> float:
     else:
         print("Strong correlation")
     
-    return correlation
+    return None
 
-def check_missing_values(df: pd.DataFrame) -> dict:
+def check_missing_values(df: pd.DataFrame) -> None:
     """
     Check for missing values in the dataset.
     
-    Args:
+    args:
         df: DataFrame to check
-        
-    Returns:
-        Dictionary with missing value counts
+    returns:
+        None
     """
     print("\n--- Missing Values Analysis ---")
     missing = df.isnull().sum()
@@ -183,103 +179,91 @@ def check_missing_values(df: pd.DataFrame) -> dict:
     
     return missing.to_dict()
 
-def analyze_band_statistics(train_df: pd.DataFrame,test_df: pd.DataFrame) -> dict:
-    """
-    Analyze band statistics by class.
-    
-    Args:
-        df: DataFrame with 'band_1', 'band_2', and 'is_iceberg' columns
-        
-    Returns:
-        Dictionary with statistics
-    """
-    print("\n--- Band Statistics by Class ---")
-    
-    stats = {}
-    for band_name in ['band_1', 'band_2']:
-        print(f"\n{band_name}:")
-        for class_label in [0, 1]:
-            class_name = 'Ship' if class_label == 0 else 'Iceberg'
-            band_values = np.concatenate([np.array(band) for band in train_df[train_df['is_iceberg'] == class_label][band_name]])
-            mean_val = np.mean(band_values)
-            std_val = np.std(band_values)
-            min_val = np.min(band_values)
-            max_val = np.max(band_values)
-            
-            print(f"  {class_name}: mean={mean_val:.2f}, std={std_val:.2f}, min={min_val:.2f}, max={max_val:.2f}")
-            stats[f"{band_name}_class_{class_label}"] = {
-                'mean': mean_val, 'std': std_val, 'min': min_val, 'max': max_val
-            }
-    
-    #check that the test data has the same band statistics as the train data
-    for band_name in ['band_1', 'band_2']:
-        band_values = np.concatenate([np.array(band) for band in test_df[band_name]])
-        mean_val = np.mean(band_values)
-        std_val = np.std(band_values)
-        min_val = np.min(band_values)
-        max_val = np.max(band_values)
-        print(f"test {band_name}: mean={mean_val:.2f}, std={std_val:.2f}, min={min_val:.2f}, max={max_val:.2f}")
-    
-    return stats
 
-def check_feature_correlation(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
+
+def plot_angle_iceberg_histogram(df: pd.DataFrame, min_angle: float, max_angle: float) -> None:
     """
-    Check correlation between band_1 and band_2.
+    Filter angles between 36-40, round to 4 decimals, and plot histogram
+    showing angle distribution colored by is_iceberg.
     
-    Args:
-        train_df: DataFrame with 'band_1' and 'band_2' columns
-        test_df: DataFrame with 'band_1' and 'band_2' columns
-        
-    Returns:
+    args:
+        df: pd.DataFrame with 'inc_angle' and 'is_iceberg' columns
+        min_angle: float: minimum angle to plot
+        max_angle: float: maximum angle to plot
+    returns:
         None
     """
-    print("\n--- Band Correlation Analysis ---")
-    for i,df in enumerate([train_df, test_df]):
-        band1_all = np.concatenate([np.array(band) for band in df['band_1']])
-        band2_all = np.concatenate([np.array(band) for band in df['band_2']])
-        correlation = np.corrcoef(band1_all, band2_all)[0, 1]
-
-        if i == 0:
-            print(f"train Correlation between band_1 and band_2: {correlation:.4f}")
-        else:
-            print(f"test Correlation between band_1 and band_2: {correlation:.4f}")
-        #check the correlation between the bands and angles
-        angle_series = pd.to_numeric(df['inc_angle'], errors='coerce')
-        median_angle = angle_series.median()
-        angle_all = angle_series.fillna(median_angle).values
-        band1_means = np.array([np.mean(np.array(band)) for band in df['band_1']])
-        band2_means = np.array([np.mean(np.array(band)) for band in df['band_2']])
-        correlation_band1 = np.corrcoef(angle_all, band1_means)[0, 1]
-        correlation_band2 = np.corrcoef(angle_all, band2_means)[0, 1]
-        if i == 0:
-            print(f"train Correlation between angle and band_1: {correlation_band1:.4f}")
-            print(f"train Correlation between angle and band_2: {correlation_band2:.4f}")
-        else:
-            print(f"test Correlation between angle and band_1: {correlation_band1:.4f}")
-            print(f"test Correlation between angle and band_2: {correlation_band2:.4f}")
-
-
-def check_target_correlation(df: pd.DataFrame) -> None:
-    """
-    Check correlation between target and bands.
+    print("\n--- Angle-Iceberg Histogram Analysis (36-40 degrees) ---")
     
-    Args:
-        df: DataFrame with 'is_iceberg', 'band_1', and 'band_2' columns
-        
-    Returns:
+    # Convert angles to numeric and filter
+    df_clean = df.copy()
+    df_clean['inc_angle'] = pd.to_numeric(df_clean['inc_angle'], errors='coerce')
+    
+    # Filter angles between 36-40
+    filtered_df = df_clean[(df_clean['inc_angle'] >= min_angle) & (df_clean['inc_angle'] <= max_angle)].copy()
+    
+    if len(filtered_df) == 0:
+        print("No data found with angles between 36-40 degrees")
+        return
+    
+    # Round to 4 decimal places
+    filtered_df['inc_angle_rounded'] = filtered_df['inc_angle'].round(4)
+    
+    print(f"Found {len(filtered_df)} samples with angles between 36-40 degrees")
+    print(f"  Ships (0): {len(filtered_df[filtered_df['is_iceberg'] == 0])}")
+    print(f"  Icebergs (1): {len(filtered_df[filtered_df['is_iceberg'] == 1])}")
+    
+    # Create histogram plot
+    fig, ax = plt.subplots(figsize=(14, 6))
+    
+    # Separate data by class
+    ship_angles = filtered_df[filtered_df['is_iceberg'] == 0]['inc_angle_rounded']
+    iceberg_angles = filtered_df[filtered_df['is_iceberg'] == 1]['inc_angle_rounded']
+    
+    # Get unique angle values (rounded to 4 decimals) for binning
+    unique_angles = sorted(filtered_df['inc_angle_rounded'].unique())
+    num_bins = min(len(unique_angles), 100)  # Limit to reasonable number of bins
+    
+    # Create histogram with appropriate binning
+    ax.hist(ship_angles, bins=num_bins, alpha=0.6, label='Ship (0)', color='blue', density=False)
+    ax.hist(iceberg_angles, bins=num_bins, alpha=0.6, label='Iceberg (1)', color='orange', density=False)
+    
+    ax.set_xlabel('Incidence Angle (rounded to 4 decimals)', fontsize=12)
+    ax.set_ylabel('Count (is_iceberg)', fontsize=12)
+    ax.set_title('Histogram of Angles (36-40°) by Class', fontsize=14)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    # Set more x-axis ticks to show more values
+    min_angle = filtered_df['inc_angle_rounded'].min()
+    max_angle = filtered_df['inc_angle_rounded'].max()
+    
+    # Create ticks every 0.1 degrees or use unique values if fewer
+    if len(unique_angles) <= 50:
+        # Show all unique angles if there aren't too many
+        ax.set_xticks(unique_angles)
+        ax.set_xticklabels([f'{angle:.4f}' for angle in unique_angles], rotation=45, ha='right', fontsize=8)
+    else:
+        # Show ticks at regular intervals
+        num_ticks = min(50, len(unique_angles))
+        tick_positions = np.linspace(min_angle, max_angle, num_ticks)
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels([f'{angle:.4f}' for angle in tick_positions], rotation=45, ha='right', fontsize=8)
+    
+    plt.tight_layout()
+    plt.savefig('eda_plots/angle_iceberg_histogram.png', dpi=150)
+    print("Visualization saved as 'eda_plots/angle_iceberg_histogram.png'")
+    plt.close()
+    return None
+
+def visualize_eda(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
+    """Create visualizations for EDA.
+    args:
+        train_df: pd.DataFrame of training data
+        test_df: pd.DataFrame of test data
+    returns:
         None
     """
-    print("\n--- Target Correlation Analysis ---")
-    target_series = df['is_iceberg']
-    band1_means = np.array([np.mean(np.array(band)) for band in df['band_1']])
-    band2_means = np.array([np.mean(np.array(band)) for band in df['band_2']])
-    correlation_target_band1 = np.corrcoef(target_series, band1_means)[0, 1]
-    correlation_target_band2 = np.corrcoef(target_series, band2_means)[0, 1]
-    print(f"Correlation between target and band_1: {correlation_target_band1:.4f}")
-    print(f"Correlation between target and band_2: {correlation_target_band2:.4f}")
-    
-def visualize_eda(train_df: pd.DataFrame, test_df: pd.DataFrame):
-    """Create visualizations for EDA."""
     fig = plt.figure(figsize=(20, 10))
     
     # Class distribution
@@ -385,8 +369,8 @@ def visualize_eda(train_df: pd.DataFrame, test_df: pd.DataFrame):
 
 
     plt.tight_layout()
-    plt.savefig('eda_analysis.png', dpi=150)
-    print("\n✓ Visualization saved as 'eda_analysis.png'")
+    plt.savefig('eda_plots/eda_analysis.png', dpi=150)
+    print("\n✓ Visualization saved as 'eda_plots/eda_analysis.png'")
     plt.close()
 
 def sample_images(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
@@ -397,7 +381,7 @@ def sample_images(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
     
     plt.figure(figsize=(12, 5)) # Use a dedicated figure size for clarity
 
-    # --- 1. Train Set Samples (Ship vs. Iceberg) ---
+    #1. Plot the train set samples (Ship vs. Iceberg)
     
     # Safely get the index of the first Ship and first Iceberg
     ship_idx_list = train_df[train_df['is_iceberg'] == 0].index
@@ -423,7 +407,7 @@ def sample_images(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
         print("Warning: Train set does not contain both Ship and Iceberg samples.")
 
 
-    # --- 2. Test Set Samples (Two arbitrary samples) ---
+    #2. Plot the test set samples (Two arbitrary samples)
     
     if not test_df.empty:
         # We assume the test set does NOT have the 'is_iceberg' label (standard competition format)
@@ -444,17 +428,27 @@ def sample_images(train_df: pd.DataFrame, test_df: pd.DataFrame) -> None:
         print("Warning: Test set is empty.")
 
     plt.tight_layout()
-    plt.savefig('sample_images.png', dpi=150)
-    print("\n✓ Sample images saved as 'sample_images.png' showing Train and Test examples.")
+    plt.savefig('eda_plots/sample_images.png', dpi=150)
+    print("\n✓ Sample images saved as 'eda_plots/sample_images.png' showing Train and Test examples.")
     plt.close()
+    return None
 
-def run_eda():
-    """Main EDA function."""
+def run_eda(train_path: str, test_path: str) -> None:
+    """
+    Main EDA function.
+    args:
+        train_path: str
+        test_path: str
+    returns:
+        None
+    """
     print("=== Exploratory Data Analysis ===")
     
+    #create the eda_plots directory if it doesn't exist
+    os.makedirs('eda_plots', exist_ok=True)
     # Load data
-    train_df = load_data('Data/train.json')
-    test_df = load_data('Data/test.json')
+    train_df = load_data(train_path)
+    test_df = load_data(test_path)
 
     print("Checking data validity...")
     #check that all the values in the data is valid
@@ -464,24 +458,20 @@ def run_eda():
     # Check class balance
     check_class_balance(train_df)
     
-
-    print("Checking band statistics...")
-    # Analyze band statistics
-    analyze_band_statistics(train_df,test_df)
-    
-    print("Checking feature correlation...")
-    # Check band correlation
-    check_feature_correlation(train_df,test_df)
-    
     print("Checking target correlation...")
-    # Check angle correlation
-    check_target_correlation(train_df)
+    # Check the correlation between the incidence angle and the target
+    check_angle_target_correlation(train_df)
     
-    Visualize
+    print("Visualizing the EDA...")
+    # Visualize the EDA
     visualize_eda(train_df, test_df)
     sample_images(train_df, test_df)
+
+
+    #zoom in on the angle distribution
+    plot_angle_iceberg_histogram(train_df, 36, 40)
     print("\n=== EDA Complete ===")
 
 if __name__ == '__main__':
-    run_eda()
+    run_eda(train_path='Data/train.json', test_path='Data/test.json')
 
